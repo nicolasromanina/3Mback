@@ -8,7 +8,6 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
-
 // Import des routes
 const authRoutes = require('./routes/auth.routes');
 const userRoutes = require('./routes/user.routes');
@@ -95,4 +94,10 @@ app.get('/api/health', (req, res) => {
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-module.exports = app;
+if (process.env.VERCEL) {
+  // Pour Vercel, on exporte directement l'app
+  module.exports = app;
+} else {
+  // Pour le mode local, on exporte normalement
+  module.exports = app;
+}

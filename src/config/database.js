@@ -1,12 +1,22 @@
-// src/config/database.js
 const mongoose = require('mongoose');
 
+// Cache la connexion pour Vercel (évite les connexions multiples)
+let cached = global.mongoose;
+
+if (!cached) {
+  cached = global.mongoose = { conn: null, promise: null };
+}
+
 const connectDB = async () => {
-  try {
+  if (cached.conn) {
+    return cached.conn;
+  }
+
+  if (!cached.promise) {
     const mongoURI = process.env.MONGODB_URI;
     
     if (!mongoURI) {
-      throw new Error('MONGODB_URI non défini dans les variables d\'environnement');
+      throw new Error('MONGODB_URI non défini');
     }
 
     const options = {
@@ -18,17 +28,25 @@ const connectDB = async () => {
       useUnifiedTopology: true,
     };
 
-    console.log('🔗 Connexion à MongoDB Atlas...');
-    const conn = await mongoose.connect(mongoURI, options);
-
-    console.log(`✅ MongoDB Atlas connecté: ${conn.connection.host}`);
-    console.log(`📁 Base de données: ${conn.connection.name}`);
-
-    return conn;
-  } catch (error) {
-    console.error('❌ Erreur de connexion MongoDB:', error.message);
-    process.exit(1);
+    cached.promise = mongoose.connect(mongoURI, options)
+      .then((conn) => {
+        console.log(`✅ MongoDB connecté: ${conn.connection.host}`);
+        return conn;
+      })
+      .catch((error) => {
+        console.error('❌ Erreur MongoDB:', error.message);
+        throw error;
+      });
   }
+
+  try {
+    cached.conn = await cached.promise;
+  } catch (e) {
+    cached.promise = null;
+    throw e;
+  }
+
+  return cached.conn;
 };
 
 module.exports = connectDB;

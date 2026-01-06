@@ -1,5 +1,5 @@
 /**
- * Modèle User
+ * Modèle User - Corrigé pour Vercel
  */
 
 const mongoose = require('mongoose');
@@ -16,7 +16,7 @@ const userSchema = new mongoose.Schema({
   email: {
     type: String,
     required: [true, 'L\'email est requis'],
-    unique: true,
+    unique: true, // ⚠️ unique: true crée déjà un index
     lowercase: true,
     trim: true,
     match: [/^\S+@\S+\.\S+$/, 'Veuillez fournir un email valide']
@@ -89,8 +89,8 @@ const userSchema = new mongoose.Schema({
   }
 });
 
-// Index pour améliorer les performances
-userSchema.index({ email: 1 });
+// Index pour améliorer les performances (SUPPRIMEZ userSchema.index({ email: 1 }); si vous l'avez ailleurs)
+// ⚠️ NE PAS ajouter userSchema.index({ email: 1 }); car unique: true crée déjà un index
 userSchema.index({ role: 1 });
 userSchema.index({ createdAt: -1 });
 

@@ -1,46 +1,63 @@
 /**
- * Middleware pour l'upload de fichiers
+ * Middleware pour l'upload de fichiers - Compatible Vercel
  */
 
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
-const { v4: uuidv4 } = require('uuid');
 
-// Créer le dossier uploads s'il n'existe pas
-const uploadPath = process.env.UPLOAD_PATH || './uploads';
-if (!fs.existsSync(uploadPath)) {
-  fs.mkdirSync(uploadPath, { recursive: true });
-}
+// Détecter l'environnement
+const isVercel = process.env.VERCEL || process.env.NODE_ENV === 'production';
+const isLocal = !isVercel;
 
-// Configuration du stockage
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    let subFolder = 'misc';
-    
-    // Déterminer le sous-dossier selon le type de fichier
-    if (file.mimetype.startsWith('image/')) {
-      subFolder = 'images';
-    } else if (file.mimetype === 'application/pdf') {
-      subFolder = 'documents';
-    } else if (file.mimetype.includes('word') || file.mimetype.includes('document')) {
-      subFolder = 'documents';
-    }
+let storage;
 
-    const destPath = path.join(uploadPath, subFolder);
-    if (!fs.existsSync(destPath)) {
-      fs.mkdirSync(destPath, { recursive: true });
-    }
-
-    cb(null, destPath);
-  },
-  filename: (req, file, cb) => {
-    const uniqueId = uuidv4();
-    const extension = path.extname(file.originalname);
-    const safeName = `${uniqueId}${extension}`;
-    cb(null, safeName);
+if (isVercel) {
+  console.log('📁 Mode Vercel: Utilisation du stockage mémoire');
+  
+  // Stockage en mémoire pour Vercel (système de fichiers en lecture seule)
+  storage = multer.memoryStorage();
+} else {
+  // Stockage sur disque pour le développement local
+  const fs = require('fs');
+  const { v4: uuidv4 } = require('uuid');
+  
+  console.log('📁 Mode Local: Utilisation du stockage disque');
+  
+  const uploadPath = process.env.UPLOAD_PATH || './uploads';
+  
+  // Créer le dossier uploads s'il n'existe pas (local seulement)
+  if (!fs.existsSync(uploadPath)) {
+    fs.mkdirSync(uploadPath, { recursive: true });
   }
-});
+
+  storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+      let subFolder = 'misc';
+      
+      // Déterminer le sous-dossier selon le type de fichier
+      if (file.mimetype.startsWith('image/')) {
+        subFolder = 'images';
+      } else if (file.mimetype === 'application/pdf') {
+        subFolder = 'documents';
+      } else if (file.mimetype.includes('word') || file.mimetype.includes('document')) {
+        subFolder = 'documents';
+      }
+
+      const destPath = path.join(uploadPath, subFolder);
+      if (!fs.existsSync(destPath)) {
+        fs.mkdirSync(destPath, { recursive: true });
+      }
+
+      cb(null, destPath);
+    },
+    filename: (req, file, cb) => {
+      const uniqueId = uuidv4();
+      const extension = path.extname(file.originalname);
+      const safeName = `${uniqueId}${extension}`;
+      cb(null, safeName);
+    }
+  });
+}
 
 // Filtre des fichiers
 const fileFilter = (req, file, cb) => {
@@ -57,8 +74,8 @@ const fileFilter = (req, file, cb) => {
     'image/png',
     'image/gif',
     'image/svg+xml',
-    'application/postscript', // EPS, AI
-    'image/vnd.adobe.photoshop', // PSD
+    'application/postscript',
+    'image/vnd.adobe.photoshop',
     'application/illustrator'
   ];
 
@@ -88,10 +105,42 @@ const uploadMultiple = (fieldName = 'files', maxCount = 10) => upload.array(fiel
 // Middleware pour plusieurs champs
 const uploadFields = (fields) => upload.fields(fields);
 
-// Utilitaire pour supprimer un fichier
+// Utilitaire pour traiter les fichiers selon l'environnement
+const processUploadedFile = (file) => {
+  if (isVercel && file.buffer) {
+    // Sur Vercel: fichier en mémoire
+    return {
+      filename: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size,
+      buffer: file.buffer,
+      encoding: file.encoding,
+      isInMemory: true
+    };
+  } else {
+    // En local: fichier sur disque
+    return {
+      filename: file.filename,
+      path: file.path,
+      mimetype: file.mimetype,
+      size: file.size,
+      destination: file.destination,
+      originalname: file.originalname,
+      isInMemory: false
+    };
+  }
+};
+
+// Utilitaire pour supprimer un fichier (local seulement)
 const deleteFile = (filePath) => {
+  if (isVercel) {
+    console.log('⚠️ Suppression de fichiers désactivée sur Vercel');
+    return Promise.resolve();
+  }
+  
   return new Promise((resolve, reject) => {
-    const fullPath = path.isAbsolute(filePath) ? filePath : path.join(uploadPath, filePath);
+    const fs = require('fs');
+    const fullPath = path.isAbsolute(filePath) ? filePath : path.join(process.env.UPLOAD_PATH || './uploads', filePath);
     
     fs.unlink(fullPath, (err) => {
       if (err && err.code !== 'ENOENT') {
@@ -105,8 +154,32 @@ const deleteFile = (filePath) => {
 
 // Utilitaire pour obtenir l'URL d'un fichier
 const getFileUrl = (filename, subfolder = '') => {
-  const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
-  return `${baseUrl}/uploads/${subfolder ? subfolder + '/' : ''}${filename}`;
+  if (isVercel) {
+    // Sur Vercel, utilisez un service cloud ou retournez une URL temporaire
+    return `${process.env.CLOUD_STORAGE_URL || ''}/${subfolder ? subfolder + '/' : ''}${filename}`;
+  } else {
+    // En local: URL locale
+    const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
+    return `${baseUrl}/uploads/${subfolder ? subfolder + '/' : ''}${filename}`;
+  }
+};
+
+// Gestionnaire pour Vercel: stocke en mémoire et peut uploader vers cloud
+const handleVercelUpload = async (fileBuffer, originalName) => {
+  if (!isVercel) return null;
+  
+  // Option 1: Stocker en base64 dans MongoDB
+  // Option 2: Uploader vers Cloudinary, AWS S3, etc.
+  // Option 3: Retourner les infos du buffer
+  
+  const base64String = fileBuffer.toString('base64');
+  
+  return {
+    filename: originalName,
+    data: base64String, // Stocké en base64
+    size: fileBuffer.length,
+    uploadedAt: new Date()
+  };
 };
 
 module.exports = {
@@ -115,5 +188,9 @@ module.exports = {
   uploadMultiple,
   uploadFields,
   deleteFile,
-  getFileUrl
+  getFileUrl,
+  processUploadedFile,
+  handleVercelUpload,
+  isVercel,
+  isLocal
 };
