@@ -1,15 +1,14 @@
-/**
- * Configuration de la connexion MongoDB pour Atlas
- */
-
+// src/config/database.js
 const mongoose = require('mongoose');
 
 const connectDB = async () => {
   try {
-    // URI MongoDB Atlas (cacher les credentials en prod)
-    const mongoURI = process.env.MONGODB_URI || 'mongodb+srv://nicolasromanina_db_user:Xq0HTX6JBBWRRAKz@3mprinting.xx4vxyr.mongodb.net/printpro?retryWrites=true&w=majority';
+    const mongoURI = process.env.MONGODB_URI;
     
-    // Options minimales et fonctionnelles
+    if (!mongoURI) {
+      throw new Error('MONGODB_URI non défini dans les variables d\'environnement');
+    }
+
     const options = {
       maxPoolSize: 10,
       serverSelectionTimeoutMS: 5000,
@@ -19,7 +18,7 @@ const connectDB = async () => {
       useUnifiedTopology: true,
     };
 
-    console.log('🔗 Tentative de connexion à MongoDB Atlas...');
+    console.log('🔗 Connexion à MongoDB Atlas...');
     const conn = await mongoose.connect(mongoURI, options);
 
     console.log(`✅ MongoDB Atlas connecté: ${conn.connection.host}`);
@@ -28,7 +27,7 @@ const connectDB = async () => {
     return conn;
   } catch (error) {
     console.error('❌ Erreur de connexion MongoDB:', error.message);
-    throw error;
+    process.exit(1);
   }
 };
 
